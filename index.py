@@ -2,8 +2,9 @@ import sqlite3
 import tkinter as tk
 from tkinter import messagebox, ttk
 import ttkbootstrap as tb
+from ttkbootstrap.dialogs import Dialog
 
-# Funcion para crear el db
+# Funciones de base de datos
 def crear_tablas():
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -21,7 +22,6 @@ def crear_tablas():
     conexion.commit()
     conexion.close()
 
-# Funcion para agregar o actualizar un producto
 def agregar_producto(nombre, cantidad, precio, costo):
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -35,14 +35,11 @@ def agregar_producto(nombre, cantidad, precio, costo):
         cursor.execute("INSERT INTO productos (nombre, cantidad, precio, costo) VALUES (?, ?, ?, ?)", 
                        (nombre, cantidad, precio, costo))
     
-    # Actualizar total gastado
     total_gastado = cantidad * costo
     cursor.execute("UPDATE totales SET total_gastado = total_gastado + ?", (total_gastado,))
-    
     conexion.commit()
     conexion.close()
 
-# Funcion para vender un producto
 def vender_producto(nombre, cantidad_vendida):
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -56,15 +53,13 @@ def vender_producto(nombre, cantidad_vendida):
             total_ventas = cantidad_vendida * producto[3]
             cursor.execute("UPDATE totales SET total_ventas = total_ventas + ?", (total_ventas,))
             conexion.commit()
-            messagebox.showinfo("Éxito", f"Vendidos {cantidad_vendida} de {nombre}.")
+            return producto[3]  # Retorna el precio unitario
         else:
-            messagebox.showerror("Error", "No hay suficiente cantidad disponible.")
+            raise ValueError("No hay suficiente cantidad disponible")
     else:
-        messagebox.showerror("Error", "Producto no encontrado.")
-    
+        raise ValueError("Producto no encontrado")
     conexion.close()
 
-# Funcion para mostrar totales
 def mostrar_totales():
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -73,7 +68,6 @@ def mostrar_totales():
     conexion.close()
     return totales
 
-# Funcion para mostrar productos en el Treeview
 def mostrar_productos(tree):
     for row in tree.get_children():
         tree.delete(row)
@@ -85,166 +79,293 @@ def mostrar_productos(tree):
         tree.insert("", tk.END, values=(producto[0], producto[1], producto[2], producto[3]))
     conexion.close()
 
-# Interfaz gráfica
-def interfaz_grafica():
-    ventana = tb.Window(themename="cosmo")  
-    ventana.title("Sistema de Compra y Venta")
+# Diálogo para agregar productos
+class AgregarProductoDialog(Dialog):
+    def __init__(self, parent, title, callback):
+        self.callback = callback
+        super().__init__(parent, title)
     
-    # Panel izquierdo para detalles de venta
-    left_frame = tb.Frame(ventana)
-    left_frame.pack(side=tk.LEFT, padx=10, pady=10, fill=tk.Y)
-    
-    # Título del panel
-    lbl_titulo_venta = tb.Label(left_frame, text="Detalles de Venta", font=('Helvetica', 12, 'bold'))
-    lbl_titulo_venta.pack(pady=5)
-    
-    # Campos de detalles de venta
-    detalles = [
-        ("Nombre del Producto:", 'nombre'),
-        ("Valor unitario:", 'valor'),
-        ("Cantidad vendida:", 'cantidad'),
-        ("Total Venta:", 'total'),
-        ("IVA (19%):", 'iva'),
-        ("Total + IVA:", 'total_iva')
-    ]
-    
-    entries = {}
-    for i, (texto, key) in enumerate(detalles):
-        lbl = tb.Label(left_frame, text=texto)
-        lbl.pack(anchor='w', padx=5, pady=2)
-        entry = tb.Entry(left_frame, width=25, state='readonly')
-        entry.pack(padx=5, pady=2, fill=tk.X)
-        entries[key] = entry
-    
-    # Marco principal para los elementos existentes
-    main_frame = tb.Frame(ventana)
-    main_frame.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH, padx=10, pady=10)
-    
-    # Campos de entrada
-    frame_entrada = tb.Frame(main_frame)
-    frame_entrada.pack(pady=10)
-    
-    lbl_nombre = tb.Label(frame_entrada, text="Nombre del Producto:")
-    lbl_nombre.grid(row=0, column=0, padx=5, pady=5)
-    entrada_nombre = tb.Entry(frame_entrada)
-    entrada_nombre.grid(row=0, column=1, padx=5, pady=5)
-    
-    lbl_cantidad = tb.Label(frame_entrada, text="Cantidad:")
-    lbl_cantidad.grid(row=1, column=0, padx=5, pady=5)
-    entrada_cantidad = tb.Entry(frame_entrada)
-    entrada_cantidad.grid(row=1, column=1, padx=5, pady=5)
-    
-    lbl_precio = tb.Label(frame_entrada, text="Precio:")
-    lbl_precio.grid(row=2, column=0, padx=5, pady=5)
-    entrada_precio = tb.Entry(frame_entrada)
-    entrada_precio.grid(row=2, column=1, padx=5, pady=5)
-    
-    lbl_costo = tb.Label(frame_entrada, text="Costo:")
-    lbl_costo.grid(row=3, column=0, padx=5, pady=5)
-    entrada_costo = tb.Entry(frame_entrada)
-    entrada_costo.grid(row=3, column=1, padx=5, pady=5)
-    
-    # Treeview para mostrar productos
-    columnas = ("Nombre", "Cantidad", "Precio", "Costo")
-    tree = ttk.Treeview(main_frame, columns=columnas, show='headings', height=8)
-    tree.pack(pady=10, fill=tk.BOTH, expand=True)
-    
-    for col in columnas:
-        tree.heading(col, text=col)
-        tree.column(col, anchor="center")
-    
-    # Funciones de los botones
-    def agregar():
-        nombre = entrada_nombre.get()
-        cantidad = int(entrada_cantidad.get())
-        precio = float(entrada_precio.get())
-        costo = float(entrada_costo.get())
-        agregar_producto(nombre, cantidad, precio, costo)
-        mostrar_productos(tree)
-        entrada_nombre.delete(0, tk.END)
-        entrada_cantidad.delete(0, tk.END)
-        entrada_precio.delete(0, tk.END)
-        entrada_costo.delete(0, tk.END)
-    
-    def vender():
-        nombre = entrada_nombre.get()
-        cantidad_vender = entrada_cantidad.get()
+    def create_body(self, master):
+        frame = tb.Frame(master, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
         
-        if not nombre or not cantidad_vender:
-            messagebox.showerror("Error", "Complete nombre y cantidad")
-            return
-            
+        # Campos del formulario
+        self.entries = {}
+        campos = [
+            ("Nombre del Producto:", "nombre"),
+            ("Cantidad:", "cantidad"),
+            ("Precio de Venta:", "precio"),
+            ("Costo:", "costo")
+        ]
+        
+        for i, (texto, key) in enumerate(campos):
+            lbl = tb.Label(frame, text=texto)
+            lbl.grid(row=i, column=0, padx=5, pady=5, sticky="w")
+            entry = tb.Entry(frame)
+            entry.grid(row=i, column=1, padx=5, pady=5, sticky="ew")
+            self.entries[key] = entry
+        
+        frame.columnconfigure(1, weight=1)
+        return frame
+    
+    def create_buttons(self, master):
+        frame = tb.Frame(master, padding=10)
+        frame.pack(fill=tk.X)
+        
+        btn_guardar = tb.Button(
+            frame, 
+            text="Guardar", 
+            bootstyle="success",
+            command=self.on_guardar
+        )
+        btn_guardar.pack(side=tk.RIGHT, padx=5)
+        
+        btn_cancelar = tb.Button(
+            frame,
+            text="Cancelar",
+            bootstyle="secondary",
+            command=self.on_cancelar
+        )
+        btn_cancelar.pack(side=tk.RIGHT, padx=5)
+        
+        return frame
+    
+    def on_guardar(self):
         try:
-            cantidad_vender = int(cantidad_vender)
-        except:
-            messagebox.showerror("Error", "Cantidad inválida")
-            return
-        
-        conexion = sqlite3.connect("inventario.db")
-        cursor = conexion.cursor()
-        cursor.execute("SELECT precio, cantidad FROM productos WHERE nombre=?", (nombre,))
-        producto = cursor.fetchone()
-        conexion.close()
-        
-        if not producto:
-            messagebox.showerror("Error", "Producto no existe")
-            return
+            datos = {
+                'nombre': self.entries['nombre'].get(),
+                'cantidad': int(self.entries['cantidad'].get()),
+                'precio': float(self.entries['precio'].get()),
+                'costo': float(self.entries['costo'].get())
+            }
             
-        precio_unitario, stock = producto
-        if stock < cantidad_vender:
-            messagebox.showerror("Error", "Stock insuficiente")
-            return
-        
-        # Calcular detalles
-        total_venta = precio_unitario * cantidad_vender
-        iva = total_venta * 0.19
-        total_con_iva = total_venta + iva
-        
-        # Actualizar panel izquierdo
-        for entry in entries.values():
-            entry.config(state='normal')
-            entry.delete(0, tk.END)
-        
-        entries['nombre'].insert(0, nombre)
-        entries['valor'].insert(0, f"${precio_unitario:.2f}")
-        entries['cantidad'].insert(0, str(cantidad_vender))
-        entries['total'].insert(0, f"${total_venta:.2f}")
-        entries['iva'].insert(0, f"${iva:.2f}")
-        entries['total_iva'].insert(0, f"${total_con_iva:.2f}")
-        
-        for entry in entries.values():
-            entry.config(state='readonly')
-        
-        # Ejecutar venta
-        vender_producto(nombre, cantidad_vender)
-        mostrar_productos(tree)
-        entrada_nombre.delete(0, tk.END)
-        entrada_cantidad.delete(0, tk.END)
+            if not all(datos.values()):
+                raise ValueError("Todos los campos son obligatorios")
+            
+            self.callback(datos)
+            self._result = True
+            self.close()
+            
+        except ValueError as e:
+            messagebox.showerror("Error", f"Datos inválidos: {str(e)}")
+    
+    def on_cancelar(self):
+        self._result = False
+        self.close()
 
-    def mostrar():
+# Interfaz principal
+class Aplicacion(tb.Window):
+    def __init__(self):
+        super().__init__(themename="cosmo")
+        self.title("Sistema de Compra y Venta")
+        self.geometry("900x600")
+        
+        # Panel izquierdo para detalles de venta
+        self.crear_panel_izquierdo()
+        
+        # Marco principal
+        self.crear_marco_principal()
+        
+        # Inicializar la base de datos
+        crear_tablas()
+        mostrar_productos(self.tree)
+    
+    def crear_panel_izquierdo(self):
+        left_frame = tb.Frame(self)
+        left_frame.pack(side=tk.LEFT, padx=10, pady=10, fill=tk.Y)
+        
+        lbl_titulo = tb.Label(left_frame, text="Detalles de Venta", font=('Helvetica', 12, 'bold'))
+        lbl_titulo.pack(pady=5)
+        
+        # Campos de detalles
+        self.detalle_entries = {}
+        detalles = [
+            ("Nombre del Producto:", "nombre"),
+            ("Valor unitario:", "valor"),
+            ("Cantidad vendida:", "cantidad"),
+            ("Total Venta:", "total"),
+            ("IVA (19%):", "iva"),
+            ("Total + IVA:", "total_iva")
+        ]
+        
+        for texto, key in detalles:
+            frame = tb.Frame(left_frame)
+            frame.pack(fill=tk.X, pady=2)
+            
+            lbl = tb.Label(frame, text=texto, width=15, anchor="w")
+            lbl.pack(side=tk.LEFT, padx=5)
+            
+            entry = tb.Entry(frame, state='readonly')
+            entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.detalle_entries[key] = entry
+        
+        # Botón para mostrar totales
+        btn_totales = tb.Button(
+            left_frame,
+            text="Ver Totales",
+            command=self.mostrar_totales,
+            bootstyle="info",
+            width=15
+        )
+        btn_totales.pack(pady=10)
+    
+    def crear_marco_principal(self):
+        main_frame = tb.Frame(self)
+        main_frame.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH, padx=10, pady=10)
+        
+        # Frame para búsqueda/venta
+        frame_venta = tb.Frame(main_frame)
+        frame_venta.pack(fill=tk.X, pady=10)
+        
+        lbl_nombre = tb.Label(frame_venta, text="Producto:")
+        lbl_nombre.pack(side=tk.LEFT, padx=5)
+        
+        self.entrada_nombre = tb.Entry(frame_venta)
+        self.entrada_nombre.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        lbl_cantidad = tb.Label(frame_venta, text="Cantidad:")
+        lbl_cantidad.pack(side=tk.LEFT, padx=5)
+        
+        self.entrada_cantidad = tb.Entry(frame_venta, width=10)
+        self.entrada_cantidad.pack(side=tk.LEFT, padx=5)
+        
+        # Treeview para productos
+        self.tree = ttk.Treeview(
+            main_frame,
+            columns=("Nombre", "Cantidad", "Precio", "Costo"),
+            show='headings',
+            height=15
+        )
+        self.tree.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Configurar columnas
+        for col in ("Nombre", "Cantidad", "Precio", "Costo"):
+            self.tree.heading(col, text=col)
+            self.tree.column(col, anchor="center", width=100)
+        
+        # Frame para botones
+        frame_botones = tb.Frame(main_frame)
+        frame_botones.pack(fill=tk.X, pady=10)
+        
+        # Botones principales
+        btn_agregar = tb.Button(
+            frame_botones,
+            text="Agregar Producto",
+            command=self.abrir_dialogo_agregar,
+            bootstyle="success"
+        )
+        btn_agregar.pack(side=tk.LEFT, padx=5)
+        
+        btn_actualizar = tb.Button(
+            frame_botones,
+            text="Actualizar Valores",
+            command=self.actualizar_panel,
+            bootstyle="primary"
+        )
+        btn_actualizar.pack(side=tk.LEFT, padx=5)
+        
+        btn_vender = tb.Button(
+            frame_botones,
+            text="Vender",
+            command=self.realizar_venta,
+            bootstyle="danger"
+        )
+        btn_vender.pack(side=tk.LEFT, padx=5)
+    
+    def abrir_dialogo_agregar(self):
+        def callback(datos):
+            agregar_producto(
+                datos['nombre'],
+                datos['cantidad'],
+                datos['precio'],
+                datos['costo']
+            )
+            mostrar_productos(self.tree)
+            messagebox.showinfo("Éxito", "Producto agregado correctamente")
+        
+        AgregarProductoDialog(self, "Agregar Producto", callback)
+    
+    def actualizar_panel(self):
+        nombre = self.entrada_nombre.get()
+        cantidad = self.entrada_cantidad.get()
+        
+        try:
+            if not nombre or not cantidad:
+                raise ValueError("Complete nombre y cantidad")
+            
+            cantidad = int(cantidad)
+            if cantidad <= 0:
+                raise ValueError("La cantidad debe ser positiva")
+            
+            conexion = sqlite3.connect("inventario.db")
+            cursor = conexion.cursor()
+            cursor.execute("SELECT precio, cantidad FROM productos WHERE nombre = ?", (nombre,))
+            producto = cursor.fetchone()
+            conexion.close()
+            
+            if not producto:
+                raise ValueError("Producto no encontrado")
+            
+            precio_unitario, stock = producto
+            if stock < cantidad:
+                raise ValueError(f"Stock insuficiente. Disponible: {stock}")
+            
+            total = precio_unitario * cantidad
+            iva = total * 0.19
+            total_con_iva = total + iva
+            
+            # Actualizar campos
+            for entry in self.detalle_entries.values():
+                entry.config(state='normal')
+                entry.delete(0, tk.END)
+            
+            self.detalle_entries['nombre'].insert(0, nombre)
+            self.detalle_entries['valor'].insert(0, f"${precio_unitario:.2f}")
+            self.detalle_entries['cantidad'].insert(0, str(cantidad))
+            self.detalle_entries['total'].insert(0, f"${total:.2f}")
+            self.detalle_entries['iva'].insert(0, f"${iva:.2f}")
+            self.detalle_entries['total_iva'].insert(0, f"${total_con_iva:.2f}")
+            
+            for entry in self.detalle_entries.values():
+                entry.config(state='readonly')
+            
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+    
+    def realizar_venta(self):
+        try:
+            nombre = self.detalle_entries['nombre'].get()
+            cantidad = int(self.detalle_entries['cantidad'].get())
+            
+            if not nombre or cantidad <= 0:
+                raise ValueError("Datos de venta inválidos")
+            
+            precio_unitario = vender_producto(nombre, cantidad)
+            mostrar_productos(self.tree)
+            
+            messagebox.showinfo("Éxito", f"Venta realizada:\n{nombre} x {cantidad}\nTotal: ${precio_unitario * cantidad:.2f}")
+            
+            # Limpiar campos
+            self.entrada_nombre.delete(0, tk.END)
+            self.entrada_cantidad.delete(0, tk.END)
+            for entry in self.detalle_entries.values():
+                entry.config(state='normal')
+                entry.delete(0, tk.END)
+                entry.config(state='readonly')
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+    
+    def mostrar_totales(self):
         totales = mostrar_totales()
-        messagebox.showinfo("Totales", 
-            f"Total Ventas: ${totales[1]:.2f}\nTotal Gastado: ${totales[2]:.2f}")
-    
-    # Botones
-    frame_botones = tb.Frame(main_frame)
-    frame_botones.pack(pady=10)
-    
-    btn_agregar = tb.Button(frame_botones, text="Agregar Producto", command=agregar)
-    btn_agregar.grid(row=0, column=0, padx=5)
-    
-    btn_vender = tb.Button(frame_botones, text="Vender Producto", command=vender)
-    btn_vender.grid(row=0, column=1, padx=5)
-    
-    btn_mostrar = tb.Button(frame_botones, text="Mostrar Totales", command=mostrar)
-    btn_mostrar.grid(row=0, column=2, padx=5)
+        messagebox.showinfo(
+            "Totales del Sistema",
+            f"Total en Ventas: ${totales[1]:.2f}\n"
+            f"Total Gastado: ${totales[2]:.2f}\n"
+            f"Ganancias: ${totales[1] - totales[2]:.2f}"
+        )
 
-    # Inicializar el Treeview con productos
-    mostrar_productos(tree)
-
-    ventana.mainloop()
-
-# Inicializar la aplicación
+# Ejecutar la aplicación
 if __name__ == "__main__":
-    crear_tablas()
-    interfaz_grafica()
+    app = Aplicacion()
+    app.mainloop()
