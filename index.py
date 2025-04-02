@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import ttkbootstrap as tb
 
-# Función para crear la base de datos y tablas
+# Funcion para crear el db
 def crear_tablas():
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -21,7 +21,7 @@ def crear_tablas():
     conexion.commit()
     conexion.close()
 
-# Función para agregar o actualizar un producto
+# Funcion para agregar o actualizar un producto
 def agregar_producto(nombre, cantidad, precio, costo):
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -42,7 +42,7 @@ def agregar_producto(nombre, cantidad, precio, costo):
     conexion.commit()
     conexion.close()
 
-# Función para vender un producto
+# Funcion para vender un producto
 def vender_producto(nombre, cantidad_vendida):
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -64,7 +64,7 @@ def vender_producto(nombre, cantidad_vendida):
     
     conexion.close()
 
-# Función para mostrar totales
+# Funcion para mostrar totales
 def mostrar_totales():
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
@@ -73,7 +73,7 @@ def mostrar_totales():
     conexion.close()
     return totales
 
-# Función para mostrar productos en el Treeview
+# Funcion para mostrar productos en el Treeview
 def mostrar_productos(tree):
     for row in tree.get_children():
         tree.delete(row)  # Limpiar el Treeview
