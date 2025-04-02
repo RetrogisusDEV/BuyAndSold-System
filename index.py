@@ -79,10 +79,10 @@ def mostrar_productos(tree):
         tree.delete(row)  # Limpiar el Treeview
     conexion = sqlite3.connect("inventario.db")
     cursor = conexion.cursor()
-    cursor.execute("SELECT nombre, cantidad, precio FROM productos")
+    cursor.execute("SELECT nombre, cantidad, precio, costo FROM productos")
     productos = cursor.fetchall()
     for producto in productos:
-        tree.insert("", tk.END, values=(producto[0], producto[1], producto[2]))
+        tree.insert("", tk.END, values=(producto[0], producto[1], producto[2], producto[3]))
     conexion.close()
 
 # Interfaz gráfica
@@ -115,7 +115,7 @@ def interfaz_grafica():
     entrada_costo.grid(row=3, column=1, padx=5, pady=5)
     
     # Treeview para mostrar productos
-    columnas = ("Nombre", "Cantidad", "Precio")
+    columnas = ("Nombre", "Cantidad", "Precio", "Costo")
     tree = ttk.Treeview(ventana, columns=columnas, show='headings', height=8)
     tree.pack(pady=10)
     
