@@ -95,11 +95,11 @@ class DatabaseManager:
             cursor.execute("SELECT nombre, cantidad, precio, costo FROM productos")
             return cursor.fetchall()
     
-    def get_current_sales(self) -> List[Tuple[str, int, float]]:
+    def get_current_sales(self) -> List[Tuple[str, int, float, float]]:
         """Obtiene los productos en venta actuales"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT producto, cantidad, precio_unitario FROM ventas_actuales")
+            cursor.execute("SELECT producto, cantidad, precio_unitario, subtotal FROM ventas_actuales")
             return cursor.fetchall()
     
     def clear_current_sales(self) -> None:
@@ -107,6 +107,28 @@ class DatabaseManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM ventas_actuales")
+    
+    def add_to_current_sales(self, nombre: str, cantidad: int = 1) -> None:
+        """Agrega un producto a las ventas actuales"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT precio FROM productos WHERE nombre = ?", (nombre,))
+            if not (result := cursor.fetchone()):
+                raise ValueError("Producto no encontrado")
+            
+            precio = result[0]
+            subtotal = precio * cantidad
+            
+            # Verificar si el producto ya está en ventas actuales
+            cursor.execute("SELECT cantidad FROM ventas_actuales WHERE producto = ?", (nombre,))
+            if existing := cursor.fetchone():
+                nueva_cantidad = existing[0] + cantidad
+                nuevo_subtotal = nueva_cantidad * precio
+                cursor.execute("UPDATE ventas_actuales SET cantidad = ?, subtotal = ? WHERE producto = ?",
+                              (nueva_cantidad, nuevo_subtotal, nombre))
+            else:
+                cursor.execute("INSERT INTO ventas_actuales (producto, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?)",
+                              (nombre, cantidad, precio, subtotal))
 
 class SaleDetailsPanel(tb.Frame):
     """Panel para mostrar los detalles de la venta"""
@@ -219,6 +241,9 @@ class InventoryApp(tb.Window):
             self.tree.heading(col, text=text)
             self.tree.column(col, anchor="center", width=100)
         
+        # Evento para selección de producto
+        self.tree.bind("<ButtonRelease-1>", self._on_product_selected)
+        
         # Barra de herramientas
         toolbar = tb.Frame(main_frame)
         toolbar.pack(fill=tk.X, pady=10)
@@ -253,7 +278,7 @@ class InventoryApp(tb.Window):
         tb.Label(self.sales_frame, text="Productos en Venta", font=('Helvetica', 12, 'bold')).pack(pady=5)
         self.sales_tree = tb.Treeview(
             self.sales_frame,
-            columns=("producto", "cantidad", "precio"),
+            columns=("producto", "cantidad", "precio", "subtotal"),
             show='headings',
             height=15,
             bootstyle="primary"
@@ -262,6 +287,15 @@ class InventoryApp(tb.Window):
         self.sales_tree.heading("producto", text="Producto")
         self.sales_tree.heading("cantidad", text="Cantidad")
         self.sales_tree.heading("precio", text="Precio Unit.")
+        self.sales_tree.heading("subtotal", text="Subtotal")
+        
+        # Mostrar total de la venta actual
+        self.total_frame = tb.Frame(self.sales_frame)
+        self.total_frame.pack(fill=tk.X, pady=5)
+        
+        tb.Label(self.total_frame, text="Total Venta:", font=('Helvetica', 10, 'bold')).pack(side=tk.LEFT, padx=5)
+        self.total_venta_label = tb.Label(self.total_frame, text="$0.00", font=('Helvetica', 10, 'bold'))
+        self.total_venta_label.pack(side=tk.LEFT)
         
         self.show_sales_view()
     
@@ -305,6 +339,42 @@ class InventoryApp(tb.Window):
     
         fields_frame.columnconfigure(1, weight=1)
     
+    def _on_product_selected(self, event):
+        """Manejador de evento cuando se selecciona un producto en la tabla"""
+        selected_item = self.tree.selection()
+        if not selected_item:
+            return
+        
+        item = self.tree.item(selected_item[0])
+        product_name = item['values'][0]
+        product_price = item['values'][2]
+        
+        try:
+            # Agregar el producto a ventas actuales (cantidad 1 por defecto)
+            self.db.add_to_current_sales(product_name)
+            
+            # Actualizar la vista de ventas
+            self._load_sales()
+            
+            # Actualizar los detalles de venta
+            self.sale_panel.update_details(product_name, product_price, 1)
+            
+            # Actualizar los campos de entrada
+            self.product_entry.delete(0, tk.END)
+            self.product_entry.insert(0, product_name)
+            self.quantity_entry.delete(0, tk.END)
+            self.quantity_entry.insert(0, "1")
+            
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+    
+    def _calculate_total_sale(self):
+        """Calcula el total de la venta actual"""
+        sales = self.db.get_current_sales()
+        total = sum(item[3] for item in sales)  # Suma todos los subtotales
+        iva = total * IVA_PERCENT
+        return total + iva
+    
     def show_add_product_view(self):
         """Muestra el formulario para agregar/editar productos"""
         self.sales_frame.pack_forget()
@@ -331,8 +401,14 @@ class InventoryApp(tb.Window):
         for item in self.sales_tree.get_children():
             self.sales_tree.delete(item)
         
+        total_venta = 0
         for producto in self.db.get_current_sales():
             self.sales_tree.insert("", tk.END, values=producto)
+            total_venta += producto[3]  # Sumar subtotales
+        
+        # Actualizar el total de la venta (incluyendo IVA)
+        total_con_iva = total_venta * (1 + IVA_PERCENT)
+        self.total_venta_label.config(text=f"${total_con_iva:.2f}")
     
     def _save_product(self) -> None:
         """Guarda un producto nuevo o editado"""
@@ -433,6 +509,11 @@ class InventoryApp(tb.Window):
                 if stock < quantity:
                     raise ValueError(f"Stock insuficiente. Disponible: {stock}")
                 
+                # Actualizar ventas actuales
+                self.db.add_to_current_sales(product, quantity)
+                
+                # Actualizar vistas
+                self._load_sales()
                 self.sale_panel.update_details(product, price, quantity)
         
         except ValueError as e:
@@ -441,26 +522,36 @@ class InventoryApp(tb.Window):
     def _sell_product(self) -> None:
         """Realiza la venta del producto"""
         try:
-            product = self.sale_panel.entries['producto'].get()
-            quantity = int(self.sale_panel.entries['cantidad'].get())
+            # Obtener todos los productos en venta actual
+            current_sales = self.db.get_current_sales()
+            if not current_sales:
+                raise ValueError("No hay productos en la venta actual")
             
-            if not product or quantity <= 0:
-                raise ValueError("No hay datos de venta válidos")
+            # Procesar cada producto en la venta actual
+            for producto, cantidad, precio, subtotal in current_sales:
+                try:
+                    self.db.sell_product(producto, cantidad)
+                except ValueError as e:
+                    messagebox.showerror(f"Error con {producto}", str(e))
+                    return
             
-            price = self.db.sell_product(product, quantity)
-            self._load_products()
+            # Mostrar resumen de la venta
+            total_venta = sum(item[3] for item in current_sales)
+            total_con_iva = total_venta * (1 + IVA_PERCENT)
             
             messagebox.showinfo(
                 "Venta realizada",
-                f"{product} x {quantity}\n"
-                f"Precio unitario: ${price:.2f}\n"
-                f"Total: ${price * quantity:.2f}"
+                f"Total de productos: {len(current_sales)}\n"
+                f"Subtotal: ${total_venta:.2f}\n"
+                f"IVA ({IVA_PERCENT*100:.0f}%): ${total_venta * IVA_PERCENT:.2f}\n"
+                f"Total: ${total_con_iva:.2f}"
             )
             
-            # Limpiar campos
+            # Limpiar campos y actualizar vistas
             self.product_entry.delete(0, tk.END)
             self.quantity_entry.delete(0, tk.END)
             self.sale_panel.clear()
+            self._load_products()
             self._load_sales()
         
         except ValueError as e:
