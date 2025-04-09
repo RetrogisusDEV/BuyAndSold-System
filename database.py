@@ -12,17 +12,28 @@ class DatabaseManager:
         """Inicializa las tablas de la base de datos"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            # Tabla productos con margen_ganancia
             cursor.execute('''CREATE TABLE IF NOT EXISTS productos
                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
                            nombre TEXT NOT NULL UNIQUE,
                            cantidad INTEGER NOT NULL,
                            precio REAL NOT NULL,
-                           costo REAL NOT NULL)''')
+                           margen_ganancia REAL NOT NULL)''')
+            
+            # Tabla totales (requerida para los cálculos)
             cursor.execute('''CREATE TABLE IF NOT EXISTS totales
                            (id INTEGER PRIMARY KEY,
                            total_ventas REAL DEFAULT 0,
                            total_gastado REAL DEFAULT 0)''')
             cursor.execute("INSERT OR IGNORE INTO totales (id) VALUES (1)")
+            
+            # Tabla de configuración para IVA
+            cursor.execute('''CREATE TABLE IF NOT EXISTS configuraciones
+                           (clave TEXT PRIMARY KEY,
+                           valor TEXT)''')
+            cursor.execute("INSERT OR IGNORE INTO configuraciones VALUES ('iva_percent', ?)", (str(IVA_PERCENT),))
+            
+            # Tabla ventas_actuales
             cursor.execute('''CREATE TABLE IF NOT EXISTS ventas_actuales
                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
                            producto_id INTEGER NOT NULL,
@@ -35,22 +46,25 @@ class DatabaseManager:
         """Obtiene una conexión a la base de datos"""
         return sqlite3.connect(self.db_name)
     
-    def add_or_update_product(self, nombre: str, cantidad: int, precio: float, costo: float) -> int:
+    def add_or_update_product(self, nombre: str, cantidad: int, precio: float, margen_ganancia: float) -> int:
         """Agrega o actualiza un producto en el inventario"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, cantidad, costo FROM productos WHERE nombre = ?", (nombre,))
-            if producto := cursor.fetchone():
-                product_id, old_cantidad, old_costo = producto
+            cursor.execute("SELECT id, cantidad FROM productos WHERE nombre = ?", (nombre,))
+            producto = cursor.fetchone()
+            
+            if producto:
+                product_id, old_cantidad = producto
                 nueva_cantidad = old_cantidad + cantidad
-                nuevo_costo = (old_cantidad * old_costo + cantidad * costo) / nueva_cantidad
-                cursor.execute("UPDATE productos SET cantidad = ?, precio = ?, costo = ? WHERE id = ?", 
-                             (nueva_cantidad, precio, nuevo_costo, product_id))
+                cursor.execute("UPDATE productos SET cantidad = ?, precio = ?, margen_ganancia = ? WHERE id = ?", 
+                             (nueva_cantidad, precio, margen_ganancia, product_id))
             else:
-                cursor.execute("INSERT INTO productos (nombre, cantidad, precio, costo) VALUES (?, ?, ?, ?)", 
-                             (nombre, cantidad, precio, costo))
+                cursor.execute("INSERT INTO productos (nombre, cantidad, precio, margen_ganancia) VALUES (?, ?, ?, ?)", 
+                             (nombre, cantidad, precio, margen_ganancia))
                 product_id = cursor.lastrowid
             
+            # Calcular costo basado en margen de ganancia y actualizar total_gastado
+            costo = precio / (1 + margen_ganancia/100)
             total_gastado = cantidad * costo
             cursor.execute("UPDATE totales SET total_gastado = total_gastado + ?", (total_gastado,))
             return product_id
@@ -117,7 +131,7 @@ class DatabaseManager:
         """Obtiene todos los productos del inventario"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, nombre, cantidad, precio, costo FROM productos")
+            cursor.execute("SELECT id, nombre, cantidad, precio, margen_ganancia FROM productos")
             return cursor.fetchall()
     
     def get_current_sales(self) -> List[Tuple[str, int, float, float]]:
@@ -134,3 +148,16 @@ class DatabaseManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM ventas_actuales")
+    
+    def get_iva_percent(self) -> float:
+        """Obtiene el porcentaje de IVA desde la base de datos"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT valor FROM configuraciones WHERE clave = 'iva_percent'")
+            return float(cursor.fetchone()[0])
+    
+    def update_iva_percent(self, new_value: float) -> None:
+        """Actualiza el porcentaje de IVA en la base de datos"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE configuraciones SET valor = ? WHERE clave = 'iva_percent'", (str(new_value),))

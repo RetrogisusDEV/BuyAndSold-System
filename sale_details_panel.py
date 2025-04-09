@@ -34,9 +34,9 @@ class SaleDetailsPanel(tb.Frame):
         ).pack(pady=10)
     
     def update_details(self, producto: str, precio: float, cantidad: int) -> None:
-        """Actualiza los detalles de la venta"""
+        iva_percent = self.master.db.get_iva_percent()  # Obtener de DB
         subtotal = precio * cantidad
-        iva = subtotal * IVA_PERCENT
+        iva = subtotal * iva_percent
         total = subtotal + iva
         
         for entry in self.entries.values():
